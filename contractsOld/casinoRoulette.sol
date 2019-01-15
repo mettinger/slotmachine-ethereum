@@ -82,7 +82,6 @@ contract CasinoRoulette {
     function fund () public payable {}
 
     function kill () public {
-        require(msg.sender == owner);
         selfdestruct(owner);
     }
 }
