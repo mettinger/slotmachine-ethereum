@@ -22,13 +22,15 @@ contract SlotMachine {
   }
 
   // PARAMETERS
-  uint constant maxHouseMembers = 20; // max number of investors/owners
-  uint constant minPercentageIncrease = 20; // min overage for kicking someone on funding
-  uint constant blockDelay = 0; // 0 for debugging, 3 for production
-  uint public minBet = 1;
-  uint public maxBetAsBalancePercentage = 10;  // percentage of house max bet
+  uint constant public maxHouseMembers = 20; // max number of investors/owners
+  uint constant public minPercentageIncrease = 20; // min overage for kicking someone on funding
+  uint constant public blockDelay = 0; // 0 for debugging, 3 for production
+  uint constant public maxBetAsBalancePercentage = 10;  // percentage of house max bet
+  uint public minFundDivisor = 1000000000;
+  uint public minBetDivisor = minFundDivisor;
 
 
+  // VARIABLES
   address payable public owner;
   mapping(uint => Bet) public bets;
   mapping(uint => uint[numReel]) public outcomes;
@@ -89,20 +91,44 @@ contract SlotMachine {
     makeMachine();
   }
 
+  // DISTRIBUTE BETS AND AWARDS ACCORDING TO PERCENTAGE OWNERSHIP
+  function distributeAmount(bool bet) internal {
+    uint numer;
+    uint denom;
+
+    for (uint i = 0; i < maxHouseMembers; i++) {
+      numer = housePercentages[houseMemberArray[i]].numerator;
+      denom = housePercentages[houseMemberArray[i]].denominator;
+
+      // INCOMING BET
+      if (bet) {
+        houseAccounts[houseMemberArray[i]] += (msg.value * numer)/denom;
+      }
+      // OUTGOING PAYOUT
+      else {
+        houseAccounts[houseMemberArray[i]] -= (msg.value * numer)/denom;
+      }
+    }
+  }
+
+  // PLACE A WAGER
   function wager () payable public {
-    require(msg.value >= minBet);
+    require(msg.value % minBetDivisor == 0);
     require(msg.value <= address(this).balance/maxBetAsBalancePercentage);
     bets[counter] = Bet(msg.sender, msg.value, block.number + blockDelay);
+    distributeAmount(true);
     emit BetPlaced(msg.sender, msg.value, block.number + 3, counter);
     counter++;
   }
 
+  // GENERATE A RANDOM INTEGER MODULO THE INPUT
   function random(uint modulus) internal returns (uint) {
     uint randomnumber = uint(keccak256(abi.encodePacked(block.number, msg.sender, nonceForRandom))) % modulus;
     nonceForRandom++;
     return randomnumber;
   }
 
+  // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
   function outcomeDetermine(uint id) public {
     uint thisRandom;
 
@@ -119,6 +145,7 @@ contract SlotMachine {
     outcomes[id] = thisOutcome;
   }
 
+  // SPIN THE REELS AND PAYOUT
   function spin (uint id) public {
       Bet storage bet = bets[id];
       require(msg.sender == bet.user);
@@ -130,17 +157,13 @@ contract SlotMachine {
 
       spun[id] = true;
       uint award = paytable(thisOutcome, bet.amount);
+      distributeAmount(false);
       if (award > 0) {
         msg.sender.transfer(award);
       }
 
       // CUSTOMIZE THIS EVENT FOR THE MACHINE STRUCTURE
       emit Spin(id, thisOutcome[0], thisOutcome[1], award);
-  }
-
-  // GETTERS FOR DEBUGGING
-  function outcomeGet(uint id) public view returns (uint[numReel] memory) {
-    return outcomes[id];
   }
 
   // TRY TO ADD A NEW MEMBER (OWNER/INVESTOR)
@@ -153,9 +176,8 @@ contract SlotMachine {
     for (uint i = 0; i < maxHouseMembers; i++){
       thisAddress = houseMemberArray[i];
       if (houseAccounts[thisAddress] == 0) {
-          houseRemoveMember(thisAddress);
           houseMemberArray[i] = addressToAdd;
-          houseAccounts[thisAddress] = initialFund;
+          houseAccounts[addressToAdd] = initialFund;
           calculateHousePercentages();
           return;
       }
@@ -174,21 +196,53 @@ contract SlotMachine {
       calculateHousePercentages();
       return;
     }
-    require(0 == 1);
+    else {
+      require(0 == 1);
+    }
   }
 
-  // FUND THE CASINO
-  function fund () public payable {
-    addMember(msg.sender, msg.value);
-    calculateHousePercentages();
+  // EUCLID'S ALGORITHM FOR GREATEST COMMON DIVISOR
+  function gcdCalculate(uint a, uint b) public pure returns (uint) {
+    uint t;
+    while (b != 0) {
+      t = b;
+      b = a % b;
+      a = t;
+    }
+    return a;
   }
 
   // RECALULATE ALL OWNERSHIP PERCENTAGES
   function calculateHousePercentages() public {
+    uint gcd;
+
     for (uint i = 0; i < maxHouseMembers; i++) {
-      housePercentages[houseMemberArray[i]].numerator = houseAccounts[houseMemberArray[i]];
-      housePercentages[houseMemberArray[i]].denominator = address(this).balance;
+      if (houseAccounts[houseMemberArray[i]] == 0) {
+        housePercentages[houseMemberArray[i]].numerator = 0;
+      }
+      gcd = gcdCalculate(houseAccounts[houseMemberArray[i]], address(this).balance);
+
+      housePercentages[houseMemberArray[i]].numerator = houseAccounts[houseMemberArray[i]]/gcd;
+      housePercentages[houseMemberArray[i]].denominator = address(this).balance/gcd;
     }
+  }
+
+  //  ALLOW OWNER TO SET AMOUNT WHICH MUST EVENLY DIVIDE ALL FUNDS
+  function setMinFundDivisor(uint amount) public {
+    require(msg.sender == owner);
+    minFundDivisor = amount;
+  }
+
+  // CHECK THAT INITIAL FUND IS MULTIPLE OF minFundDivisor
+  function multipleOf(uint amount) public view returns (bool) {
+    return amount % minFundDivisor == 0;
+  }
+
+  // FUND THE CASINO
+  function fund () public payable {
+    require(multipleOf(msg.value));
+    addMember(msg.sender, msg.value);
+    calculateHousePercentages();
   }
 
   // REMOVE A MEMBER (OWNER/INVESTOR)
@@ -206,10 +260,6 @@ contract SlotMachine {
     calculateHousePercentages();
   }
 
-  function getBalance () view public returns (uint) {
-    return address(this).balance;
-  }
-
   // TRANSFER ALL FUNDS TO MEMBERS AND DESTROY THE CONTRACT
   function kill () public {
     require(msg.sender == owner);
@@ -217,5 +267,14 @@ contract SlotMachine {
       houseRemoveMember(houseMemberArray[i]);
     }
     selfdestruct(owner);
+  }
+
+  // GETTERS FOR DEBUGGING
+  function outcomeGet(uint id) public view returns (uint[numReel] memory) {
+    return outcomes[id];
+  }
+
+  function getBalance () view public returns (uint) {
+    return address(this).balance;
   }
 }
