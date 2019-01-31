@@ -3,13 +3,6 @@ pragma solidity ^0.5.0;
 contract SlotMachine {
 
   // STRUCTURES
-  struct Reel {
-    uint probDenominator;
-    //  THESE CUTOFFS CORRESPOND TO THE PROBABILITIES OF THE EVENTS
-    //  WHEN WE GENERATE A RANDOM NUMBER IN [0, probDenominator - 1]
-    uint[] probCutoffs;
-  }
-
   struct Bet {
     address user;
     uint amount;
@@ -33,9 +26,8 @@ contract SlotMachine {
   // VARIABLES
   address payable public owner;
   mapping(uint => Bet) public bets;
-  mapping(uint => uint[numReel]) public outcomes;
   uint[numReel] thisOutcome;
-  mapping(uint => bool) public spun;
+  mapping(uint => bool) public alreadyPlayed;
   mapping(address => HousePercentage) public housePercentages;
   mapping(address => uint) public houseAccounts;
   address payable [maxHouseMembers] public houseMemberArray;
@@ -45,11 +37,36 @@ contract SlotMachine {
   // ******************************
   // DEFINE THE MACHINE
 
-  // machine specific constants
-  uint8 constant numReel = 2;
+  // MACHINE SPECIFIC STRUCTURES
+  struct Reel {
+    uint probDenominator;
+    //  THESE CUTOFFS CORRESPOND TO THE PROBABILITIES OF THE EVENTS
+    //  WHEN WE GENERATE A RANDOM NUMBER IN [0, probDenominator - 1]
+    uint[] probCutoffs;
+  }
 
-  uint[numReel] public numSymbols;
+  // MACHINE SPECIFIC CONSTANTS AND VARIABLES
+  uint8 constant numReel = 2;
+  mapping(uint => uint[numReel]) public outcomes;
   Reel[numReel] public machine;
+
+  // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
+  function sample(uint id) public {
+    uint thisRandom;
+    uint thisHash = uint(keccak256(abi.encodePacked(block.number, msg.sender)));
+
+    for (uint i = 0; i < numReel; i++) {
+      thisRandom = thisHash % machine[i].probDenominator;
+      // CONVERT RANDOM NUMBER TO EVENT
+      for (uint j = 0; j < machine[i].probCutoffs.length; j++){
+        if (thisRandom <= machine[i].probCutoffs[j]) {
+          thisOutcome[i] = j;
+          break;
+        }
+      }
+    }
+    outcomes[id] = thisOutcome;
+  }
 
   // CALCULATE THE PAYOUT
   function paytable(uint[numReel] memory outcome, uint betAmount) internal pure returns (uint) {
@@ -74,21 +91,23 @@ contract SlotMachine {
       require(machine[i].probCutoffs[machine[i].probCutoffs.length - 1] ==
               machine[i].probDenominator - 1);
     }
-
-    // record the number of symbols for each reel
-    for (uint8 i = 0; i < numReel; i++) {
-      numSymbols[i] = machine[i].probCutoffs.length;
-    }
   }
 
-  event Spin(uint id, uint real0, uint real1, uint award); // specific to machine!
+  function gameSetup() internal {
+    makeMachine();
+  }
+
+  // END MACHINE DEFINITION
   // ***************************************
 
+
+  // DEFINE EVENTS
   event BetPlaced(address user, uint amount, uint block, uint counter);
+  event Awarded(uint id, uint award);
 
   constructor () public payable {
     owner = msg.sender;
-    makeMachine();
+    gameSetup();
   }
 
   // DISTRIBUTE BETS AND AWARDS ACCORDING TO PERCENTAGE OWNERSHIP
@@ -121,49 +140,24 @@ contract SlotMachine {
     counter++;
   }
 
-  // GENERATE A RANDOM INTEGER MODULO THE INPUT
-  function random(uint modulus) internal returns (uint) {
-    uint randomnumber = uint(keccak256(abi.encodePacked(block.number, msg.sender, nonceForRandom))) % modulus;
-    nonceForRandom++;
-    return randomnumber;
-  }
-
-  // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
-  function outcomeDetermine(uint id) public {
-    uint thisRandom;
-
-    for (uint i = 0; i < numReel; i++) {
-      thisRandom = random(machine[i].probDenominator);
-      // CONVERT RANDOM NUMBER TO EVENT
-      for (uint j = 0; j < machine[i].probCutoffs.length; j++){
-        if (thisRandom <= machine[i].probCutoffs[j]) {
-          thisOutcome[i] = j;
-          break;
-        }
-      }
-    }
-    outcomes[id] = thisOutcome;
-  }
-
-  // SPIN THE REELS AND PAYOUT
-  function spin (uint id) public {
+  // PLAY THE GAME
+  function play (uint id) public {
       Bet storage bet = bets[id];
       require(msg.sender == bet.user);
       require(block.number >= bet.block);
       require(block.number <= bet.block + 255); // make this into a refund
-      require(!spun[id]);
+      require(!alreadyPlayed[id]);
 
-      outcomeDetermine(id);
+      sample(id);
 
-      spun[id] = true;
+      alreadyPlayed[id] = true;
       uint award = paytable(thisOutcome, bet.amount);
-      distributeAmount(false);
       if (award > 0) {
+        distributeAmount(false);
         msg.sender.transfer(award);
       }
 
-      // CUSTOMIZE THIS EVENT FOR THE MACHINE STRUCTURE
-      emit Spin(id, thisOutcome[0], thisOutcome[1], award);
+      emit Awarded(id, award);
   }
 
   // TRY TO ADD A NEW MEMBER (OWNER/INVESTOR)
