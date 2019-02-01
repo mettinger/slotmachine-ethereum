@@ -2,7 +2,52 @@ pragma solidity ^0.5.0;
 
 contract SlotMachine {
 
+  // ******************************
+  // DEFINE THE MACHINE
+
+  // MACHINE SPECIFIC CONSTANTS AND VARIABLES
+  uint8 constant numReel = 5;
+
+  // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
+  function makeMachine() internal {
+    reels[0].probDenominator = 1000;
+    reels[0].probs = [325, 180, 140, 104, 52, 48, 42, 39, 36, 34];
+    reels[0].eventLabels = [18, 8, 10, 7, 0, 9, 19, 14, 13, 3];
+    reels[1].probDenominator = 1000;
+    reels[1].probs = [282, 190, 169, 166, 105, 40, 29, 11, 5, 3];
+    reels[1].eventLabels = [0, 10, 17, 19, 14, 6, 11, 7, 4, 15];
+    reels[2].probDenominator = 1000;
+    reels[2].probs = [267, 199, 125, 124, 83, 80, 80, 25, 12, 5];
+    reels[2].eventLabels = [14, 12, 16, 13, 8, 3, 6, 0, 18, 5];
+    reels[3].probDenominator = 1000;
+    reels[3].probs = [244, 233, 103, 86, 82, 80, 62, 62, 46, 2];
+    reels[3].eventLabels = [5, 19, 2, 16, 11, 1, 17, 0, 13, 4];
+    reels[4].probDenominator = 1000;
+    reels[4].probs = [417, 192, 113, 101, 82, 63, 17, 7, 5, 3];
+    reels[4].eventLabels = [12, 17, 11, 3, 2, 13, 10, 19, 8, 16];
+
+  }
+
+  // CALCULATE THE PAYOUT
+  function paytable(uint[numReel] memory outcome, uint betAmount) internal pure returns (uint) {
+    if (outcome[0] == 0 && outcome[1] == 1) {
+      return 5 * betAmount;
+    }
+    else {
+      return 0;
+    }
+  }
+
+// END MACHINE DEFINITION
+// ***************************************
+
   // STRUCTURES
+  struct Reel {
+    uint probDenominator;
+    uint[] probs;
+    uint[] eventLabels;
+  }
+
   struct Bet {
     address user;
     uint amount;
@@ -26,88 +71,48 @@ contract SlotMachine {
   // VARIABLES
   address payable public owner;
   mapping(uint => Bet) public bets;
-  uint[numReel] thisOutcome;
   mapping(uint => bool) public alreadyPlayed;
   mapping(address => HousePercentage) public housePercentages;
   mapping(address => uint) public houseAccounts;
   address payable [maxHouseMembers] public houseMemberArray;
   uint public counter = 0;
   uint public nonceForRandom = 0;
-
-  // ******************************
-  // DEFINE THE MACHINE
-
-  // MACHINE SPECIFIC STRUCTURES
-  struct Reel {
-    uint probDenominator;
-    //  THESE CUTOFFS CORRESPOND TO THE PROBABILITIES OF THE EVENTS
-    //  WHEN WE GENERATE A RANDOM NUMBER IN [0, probDenominator - 1]
-    uint[] probCutoffs;
-  }
-
-  // MACHINE SPECIFIC CONSTANTS AND VARIABLES
-  uint8 constant numReel = 2;
+  Reel[numReel] public reels;
+  uint[numReel] thisOutcome;
   mapping(uint => uint[numReel]) public outcomes;
-  Reel[numReel] public machine;
-
-  // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
-  function sample(uint id) public {
-    uint thisRandom;
-    uint thisHash = uint(keccak256(abi.encodePacked(block.number, msg.sender)));
-
-    for (uint i = 0; i < numReel; i++) {
-      thisRandom = thisHash % machine[i].probDenominator;
-      // CONVERT RANDOM NUMBER TO EVENT
-      for (uint j = 0; j < machine[i].probCutoffs.length; j++){
-        if (thisRandom <= machine[i].probCutoffs[j]) {
-          thisOutcome[i] = j;
-          break;
-        }
-      }
-    }
-    outcomes[id] = thisOutcome;
-  }
-
-  // CALCULATE THE PAYOUT
-  function paytable(uint[numReel] memory outcome, uint betAmount) internal pure returns (uint) {
-    if (outcome[0] == 0 && outcome[1] == 1) {
-      return 5 * betAmount;
-    }
-    else {
-      return 0;
-    }
-  }
-
-  // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
-  function makeMachine() internal {
-    machine[0].probDenominator = 100;
-    machine[0].probCutoffs = [49,97,98,99];
-
-    machine[1].probDenominator = 100;
-    machine[1].probCutoffs = [1,2,50,99];
-
-    // check that last cutoff is the max random number
-    for (uint8 i = 0; i < numReel; i++) {
-      require(machine[i].probCutoffs[machine[i].probCutoffs.length - 1] ==
-              machine[i].probDenominator - 1);
-    }
-  }
-
-  function gameSetup() internal {
-    makeMachine();
-  }
-
-  // END MACHINE DEFINITION
-  // ***************************************
-
 
   // DEFINE EVENTS
   event BetPlaced(address user, uint amount, uint block, uint counter);
   event Awarded(uint id, uint award);
+  event Spin(uint id, uint award);
 
   constructor () public payable {
     owner = msg.sender;
-    gameSetup();
+    makeMachine();
+  }
+
+  // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
+  //  **********  possible to do in log(precision) rather than O(reel length) ?
+  function sample(uint id) public {
+    uint thisRandom;
+    uint thisHash = uint(keccak256(abi.encodePacked(block.number, msg.sender)));
+    uint runningProbSum;
+
+    for (uint i = 0; i < numReel; i++) {
+      thisRandom = thisHash % reels[i].probDenominator;
+      // CONVERT RANDOM NUMBER TO EVENT
+      runningProbSum = reels[i].probs[0] - 1;
+      for (uint j = 0; j < reels[i].probs.length; j++){
+        if (thisRandom <= runningProbSum) {
+          thisOutcome[i] = reels[i].eventLabels[j];
+          break;
+        }
+        else {
+          runningProbSum += reels[i].probs[j + 1];
+        }
+      }
+    }
+    outcomes[id] = thisOutcome;
   }
 
   // DISTRIBUTE BETS AND AWARDS ACCORDING TO PERCENTAGE OWNERSHIP
@@ -204,6 +209,13 @@ contract SlotMachine {
       a = t;
     }
     return a;
+  }
+
+  function countMaxMatch(uint[numReel] thisOutcome) public pure returns (uint) {
+    mapping(uint8 => uint8) public symbolCounter;
+    for (uint i = 0; i < numReel; i++) {
+      
+    }
   }
 
   // RECALULATE ALL OWNERSHIP PERCENTAGES
