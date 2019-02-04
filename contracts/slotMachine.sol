@@ -138,7 +138,7 @@ contract SlotMachine {
   // PLACE A WAGER
   function wager () payable public {
     require(msg.value % minBetDivisor == 0);
-    require(msg.value <= address(this).balance/maxBetAsBalancePercentage);
+    require(msg.value <= (address(this).balance * maxBetAsBalancePercentage) / 100);
     bets[counter] = Bet(msg.sender, msg.value, block.number + blockDelay);
     distributeAmount(true);
     emit BetPlaced(msg.sender, msg.value, block.number + 3, counter);
@@ -172,6 +172,17 @@ contract SlotMachine {
     uint currentMinIndex = 0;
     address payable thisAddress;
 
+    // CHECK IF ALREADY A MEMBER
+    for (uint i = 0; i < maxHouseMembers; i++){
+      thisAddress = houseMemberArray[i];
+      if (thisAddress == addressToAdd) {
+          houseAccounts[addressToAdd] += initialFund;
+          calculateHousePercentages();
+          return;
+      }
+    }
+
+    // CHECK IF ANY EMPTY SLOTS
     for (uint i = 0; i < maxHouseMembers; i++){
       thisAddress = houseMemberArray[i];
       if (houseAccounts[thisAddress] == 0) {
@@ -187,6 +198,8 @@ contract SlotMachine {
         }
       }
     }
+
+    // BUMP MIN MEMBER IF INITIAL FUND IS GREATER
     if ( initialFund > currentMin + ((currentMin * minPercentageIncrease)/100) ) {
       thisAddress = houseMemberArray[currentMinIndex];
       houseRemoveMember(thisAddress);
