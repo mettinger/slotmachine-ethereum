@@ -3,43 +3,43 @@ pragma solidity ^0.5.0;
 contract SlotMachine {
 
   // ******************************
-// DEFINE THE MACHINE
+  // DEFINE THE MACHINE
 
-  // MACHINE SPECIFIC CONSTANTS AND VARIABLES
-  uint8 constant numReel = 5;
+    // MACHINE SPECIFIC CONSTANTS AND VARIABLES
+    uint8 constant numReel = 5;
 
-  // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
-  function makeMachine() internal {
-    reels[0].probDenominator = 1000;
-    reels[0].probs = [518, 192, 101, 41, 36, 32, 31, 29, 17, 3];
-    reels[0].eventLabels = [8, 6, 5, 13, 2, 9, 0, 15, 18, 7];
-    reels[1].probDenominator = 1000;
-    reels[1].probs = [383, 213, 137, 79, 63, 51, 21, 20, 17, 16];
-    reels[1].eventLabels = [13, 8, 0, 15, 9, 16, 2, 14, 17, 5];
-    reels[2].probDenominator = 1000;
-    reels[2].probs = [238, 154, 146, 104, 83, 83, 82, 80, 16, 14];
-    reels[2].eventLabels = [8, 9, 6, 3, 17, 11, 10, 0, 2, 12];
-    reels[3].probDenominator = 1000;
-    reels[3].probs = [310, 236, 104, 100, 84, 68, 47, 30, 17, 4];
-    reels[3].eventLabels = [17, 16, 2, 12, 13, 3, 5, 8, 15, 1];
-    reels[4].probDenominator = 1000;
-    reels[4].probs = [260, 222, 146, 98, 92, 92, 54, 20, 14, 2];
-    reels[4].eventLabels = [13, 16, 2, 15, 11, 19, 5, 0, 12, 8];
-}
+    // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
+    function makeMachine() internal {
+      reels[0].probDenominator = 100;
+      reels[0].probs = [12, 12, 12, 12, 13, 13, 13, 13];
+      reels[0].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+      reels[1].probDenominator = 100;
+      reels[1].probs = [12, 12, 12, 12, 13, 13, 13, 13];
+      reels[1].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+      reels[2].probDenominator = 100;
+      reels[2].probs = [12, 12, 12, 12, 13, 13, 13, 13];
+      reels[2].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+      reels[3].probDenominator = 100;
+      reels[3].probs = [12, 12, 12, 12, 13, 13, 13, 13];
+      reels[3].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+      reels[4].probDenominator = 100;
+      reels[4].probs = [12, 12, 12, 12, 13, 13, 13, 13];
+      reels[4].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+  }
 
-  // CALCULATE THE PAYOUT
-  function paytable(uint[numReel] memory outcome, uint betAmount) internal returns (uint) {
-    uint maxMatch = countMaxMatch(outcome);
-    if (maxMatch == 4) {
-      return betAmount * 75;
-    }
-    if (maxMatch == 5) {
-      return betAmount * 284214;
-    }
-}
+    // CALCULATE THE PAYOUT
+    function paytable(uint[numReel] memory outcome, uint betAmount) internal returns (uint) {
+      uint maxMatch = countMaxMatch(outcome);
+      if (maxMatch == 4) {
+        return betAmount * 19;
+      }
+      if (maxMatch == 5) {
+        return betAmount * 2015;
+      }
+  }
 
-// END MACHINE DEFINITION
-// ***************************************
+  // END MACHINE DEFINITION
+  // ***************************************
 
   // STRUCTURES
   struct Reel {
