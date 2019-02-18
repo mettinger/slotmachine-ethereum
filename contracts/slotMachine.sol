@@ -3,43 +3,43 @@ pragma solidity ^0.5.0;
 contract SlotMachine {
 
   // ******************************
-  // DEFINE THE MACHINE
+// DEFINE THE MACHINE
 
-    // MACHINE SPECIFIC CONSTANTS AND VARIABLES
-    uint8 constant numReel = 5;
+  // MACHINE SPECIFIC CONSTANTS AND VARIABLES
+  uint8 constant numReel = 5;
 
-    // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
-    function makeMachine() internal {
-      reels[0].probDenominator = 100;
-      reels[0].probs = [12, 12, 12, 12, 13, 13, 13, 13];
-      reels[0].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
-      reels[1].probDenominator = 100;
-      reels[1].probs = [12, 12, 12, 12, 13, 13, 13, 13];
-      reels[1].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
-      reels[2].probDenominator = 100;
-      reels[2].probs = [12, 12, 12, 12, 13, 13, 13, 13];
-      reels[2].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
-      reels[3].probDenominator = 100;
-      reels[3].probs = [12, 12, 12, 12, 13, 13, 13, 13];
-      reels[3].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
-      reels[4].probDenominator = 100;
-      reels[4].probs = [12, 12, 12, 12, 13, 13, 13, 13];
-      reels[4].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7];
-  }
+  // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
+  function makeMachine() internal {
+    reels[0].probDenominator = 100;
+    reels[0].probs = [12, 11, 11, 11, 11, 11, 11, 11, 11];
+    reels[0].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    reels[1].probDenominator = 100;
+    reels[1].probs = [12, 11, 11, 11, 11, 11, 11, 11, 11];
+    reels[1].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    reels[2].probDenominator = 100;
+    reels[2].probs = [12, 11, 11, 11, 11, 11, 11, 11, 11];
+    reels[2].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    reels[3].probDenominator = 100;
+    reels[3].probs = [12, 11, 11, 11, 11, 11, 11, 11, 11];
+    reels[3].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    reels[4].probDenominator = 100;
+    reels[4].probs = [12, 11, 11, 11, 11, 11, 11, 11, 11];
+    reels[4].eventLabels = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+}
 
-    // CALCULATE THE PAYOUT
-    function paytable(uint[numReel] memory outcome, uint betAmount) internal returns (uint) {
-      uint maxMatch = countMaxMatch(outcome);
-      if (maxMatch == 4) {
-        return betAmount * 19;
-      }
-      if (maxMatch == 5) {
-        return betAmount * 2015;
-      }
-  }
+  // CALCULATE THE PAYOUT
+  function paytable(uint[numReel] memory outcome, uint betAmount) internal returns (uint) {
+    uint maxMatch = countMaxMatch(outcome);
+    if (maxMatch == 4) {
+      return betAmount * 27;
+    }
+    if (maxMatch == 5) {
+      return betAmount * 3252;
+    }
+}
 
-  // END MACHINE DEFINITION
-  // ***************************************
+// END MACHINE DEFINITION
+// ******************************************
 
   // STRUCTURES
   struct Reel {
@@ -81,6 +81,7 @@ contract SlotMachine {
   uint[numReel] thisOutcome;
   mapping(uint => uint[numReel]) public outcomes;
   mapping(uint => uint8) public symbolCounter;
+  uint public award;
 
   // DEFINE EVENTS
   event BetPlaced(address user, uint amount, uint block, uint counter);
@@ -95,10 +96,12 @@ contract SlotMachine {
   // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
   function sample(uint id) public {
     uint thisRandom;
-    uint thisHash = uint(keccak256(abi.encodePacked(block.number, msg.sender)));
+    uint thisHash;
     uint runningProbSum;
+    uint i;
 
-    for (uint i = 0; i < numReel; i++) {
+    for (i = 0; i < numReel; i++) {
+      thisHash = uint(keccak256(abi.encodePacked(block.number, msg.sender, i)));
       thisRandom = thisHash % reels[i].probDenominator;
       // CONVERT RANDOM NUMBER TO EVENT
       runningProbSum = reels[i].probs[0] - 1;
@@ -156,8 +159,11 @@ contract SlotMachine {
       sample(id);
 
       alreadyPlayed[id] = true;
-      uint award = paytable(thisOutcome, bet.amount);
+      award = paytable(thisOutcome, bet.amount);
       if (award > 0) {
+        if (award > address(this).balance) {
+          award = address(this).balance;
+        }
         distributeAmount(false);
         msg.sender.transfer(award);
       }
@@ -226,7 +232,13 @@ contract SlotMachine {
 
   function countMaxMatch(uint[numReel] memory outcomeResult) public returns (uint) {
     uint8 max = 0;
-    for (uint i = 0; i < numReel; i++) {
+    uint8 i = 0;
+
+    for (i = 0; i < numReel; i++) {
+        symbolCounter[outcomeResult[i]] = 0;
+    }
+
+    for (i = 0; i < numReel; i++) {
       symbolCounter[outcomeResult[i]] += 1;
       if (symbolCounter[outcomeResult[i]] > max) {
         max = symbolCounter[outcomeResult[i]];
