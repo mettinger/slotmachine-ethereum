@@ -7,6 +7,7 @@ contract SlotMachine {
 
   // MACHINE SPECIFIC CONSTANTS AND VARIABLES
   uint8 constant numReel = 5;
+  uint constant public maxMultiplier = 3252;
 
   // DEFINE THE PROBABILITIES FOR THE REEL SYMBOLS
   function makeMachine() internal {
@@ -63,7 +64,6 @@ contract SlotMachine {
   uint constant public maxHouseMembers = 20; // max number of investors/owners
   uint constant public minPercentageIncrease = 20; // min overage for kicking someone on funding
   uint constant public blockDelay = 0; // 0 for debugging, 3 for production
-  uint constant public maxBetAsBalancePercentage = 10;  // percentage of house max bet
   uint public minFundDivisor = 1000000000;
   uint public minBetDivisor = minFundDivisor;
 
@@ -141,7 +141,6 @@ contract SlotMachine {
   // PLACE A WAGER
   function wager () payable public {
     require(msg.value % minBetDivisor == 0);
-    require(msg.value <= (address(this).balance * maxBetAsBalancePercentage) / 100);
     bets[counter] = Bet(msg.sender, msg.value, block.number + blockDelay);
     distributeAmount(true);
     emit BetPlaced(msg.sender, msg.value, block.number + 3, counter);
