@@ -55,26 +55,17 @@ contract SlotMachine {
     uint block;
   }
 
-  struct HousePercentage {
-    uint numerator;
-    uint denominator;
-  }
-
   // PARAMETERS
-  uint constant public maxHouseMembers = 20; // max number of investors/owners
+  uint8 constant public maxHouseMembers = 20; // max number of investors/owners
   uint constant public minPercentageIncrease = 20; // min overage for kicking someone on funding
   uint constant public blockDelay = 0; // 0 for debugging, 3 for production
-  uint public minFundDivisor = 1000000000;
-  uint public minBetDivisor = minFundDivisor;
+  uint public minDivisor = 1000000000;
 
 
   // VARIABLES
   address payable public owner;
   mapping(uint => Bet) public bets;
   mapping(uint => bool) public alreadyPlayed;
-  mapping(address => HousePercentage) public housePercentages;
-  mapping(address => uint) public houseAccounts;
-  address payable [maxHouseMembers] public houseMemberArray;
   uint public counter = 0;
   uint public nonceForRandom = 0;
   Reel[numReel] public reels;
@@ -82,6 +73,13 @@ contract SlotMachine {
   mapping(uint => uint[numReel]) public outcomes;
   mapping(uint => uint8) public symbolCounter;
   uint public award;
+
+  uint[maxHouseMembers] public houseAccountsArray;
+  bool[maxHouseMembers] public houseActiveArray;
+  address payable [maxHouseMembers] public houseMemberArray;
+
+  uint public houseAccountMin = 0;
+  uint8 public houseAccountMinIndex = 0;
 
   // DEFINE EVENTS
   event BetPlaced(address user, uint amount, uint block, uint counter);
@@ -119,31 +117,29 @@ contract SlotMachine {
   }
 
   // DISTRIBUTE BETS AND AWARDS ACCORDING TO PERCENTAGE OWNERSHIP
-  function distributeAmount(bool bet) internal {
-    uint numer;
-    uint denom;
-
+  function distributeAmount(bool bet, uint amount) internal {
+    uint balanceHouse= address(this).balance;
     for (uint i = 0; i < maxHouseMembers; i++) {
-      numer = housePercentages[houseMemberArray[i]].numerator;
-      denom = housePercentages[houseMemberArray[i]].denominator;
+      if (houseActiveArray[i]) {
 
-      // INCOMING BET
-      if (bet) {
-        houseAccounts[houseMemberArray[i]] += (msg.value * numer)/denom;
-      }
-      // OUTGOING PAYOUT
-      else {
-        houseAccounts[houseMemberArray[i]] -= (msg.value * numer)/denom;
+        // INCOMING BET
+        if (bet) {
+          houseAccountsArray[i] += (amount * houseAccountsArray[i])/balanceHouse;
+        }
+        // OUTGOING PAYOUT
+        else {
+          houseAccountsArray[i] -= (amount * houseAccountsArray[i])/balanceHouse;
+        }
       }
     }
   }
 
   // PLACE A WAGER
   function wager () payable public {
-    require(msg.value % minBetDivisor == 0);
+    require(msg.value % minDivisor == 0);
     bets[counter] = Bet(msg.sender, msg.value, block.number + blockDelay);
-    distributeAmount(true);
-    emit BetPlaced(msg.sender, msg.value, block.number + 3, counter);
+    distributeAmount(true, msg.value);
+    emit BetPlaced(msg.sender, msg.value, block.number + blockDelay, counter);
     counter++;
   }
 
@@ -152,7 +148,7 @@ contract SlotMachine {
       Bet storage bet = bets[id];
       require(msg.sender == bet.user);
       require(block.number >= bet.block);
-      require(block.number <= bet.block + 255); // make this into a refund
+      require(block.number <= bet.block + 255);
       require(!alreadyPlayed[id]);
 
       sample(id);
@@ -163,72 +159,95 @@ contract SlotMachine {
         if (award > address(this).balance) {
           award = address(this).balance;
         }
-        distributeAmount(false);
+        distributeAmount(false, award);
         msg.sender.transfer(award);
       }
 
       emit Awarded(id, award);
   }
 
+  function minHouseAccountGet() public {
+    uint currentMin = address(this).balance;
+    uint8 currentMinIndex = maxHouseMembers;
+
+    for (uint8 i = 0; i < maxHouseMembers; i++) {
+      if (!houseActiveArray[i]){
+        houseAccountMin = 0;
+        houseAccountMinIndex = i;
+        return;
+      }
+      if (houseAccountsArray[i] < currentMin){
+        currentMin = houseAccountsArray[i];
+        currentMinIndex = i;
+      }
+    }
+    houseAccountMin = currentMin;
+    houseAccountMinIndex = currentMinIndex;
+  }
+
   // TRY TO ADD A NEW MEMBER (OWNER/INVESTOR)
   function addMember(address payable addressToAdd, uint initialFund) private {
 
-    uint currentMin = houseAccounts[houseMemberArray[0]];
-    uint currentMinIndex = 0;
-    address payable thisAddress;
-
     // CHECK IF ALREADY A MEMBER
-    for (uint i = 0; i < maxHouseMembers; i++){
-      thisAddress = houseMemberArray[i];
-      if (thisAddress == addressToAdd) {
-          houseAccounts[addressToAdd] += initialFund;
-          calculateHousePercentages();
-          return;
-      }
-    }
+    (bool isAlreadyMember, uint8 index) = indexFromAddressGet(addressToAdd);
 
-    // CHECK IF ANY EMPTY SLOTS
-    for (uint i = 0; i < maxHouseMembers; i++){
-      thisAddress = houseMemberArray[i];
-      if (houseAccounts[thisAddress] == 0) {
-          houseMemberArray[i] = addressToAdd;
-          houseAccounts[addressToAdd] = initialFund;
-          calculateHousePercentages();
-          return;
-      }
-      else {
-        if (houseAccounts[houseMemberArray[i]] < currentMin) {
-          currentMin = houseAccounts[houseMemberArray[i]];
-          currentMinIndex = i;
-        }
-      }
-    }
-
-    // BUMP MIN MEMBER IF INITIAL FUND IS GREATER
-    if ( initialFund > currentMin + ((currentMin * minPercentageIncrease)/100) ) {
-      thisAddress = houseMemberArray[currentMinIndex];
-      houseRemoveMember(thisAddress);
-      houseMemberArray[currentMinIndex] = addressToAdd;
-      houseAccounts[thisAddress] = initialFund;
-      calculateHousePercentages();
+    if (isAlreadyMember) {
+      houseAccountsArray[index] += initialFund;
+      houseActiveArray[index] = true;
+      minHouseAccountGet();
       return;
     }
     else {
-      require(0 == 1);
+      if (initialFund > houseAccountMin + ((houseAccountMin * minPercentageIncrease)/100)) {
+        houseAccountsArray[houseAccountMinIndex] = initialFund;
+        houseActiveArray[houseAccountMinIndex] = true;
+        houseMemberArray[houseAccountMinIndex] = addressToAdd;
+        minHouseAccountGet();
+        return;
+      }
     }
   }
 
-  // EUCLID'S ALGORITHM FOR GREATEST COMMON DIVISOR
-  function gcdCalculate(uint a, uint b) public pure returns (uint) {
-    uint t;
-    while (b != 0) {
-      t = b;
-      b = a % b;
-      a = t;
-    }
-    return a;
+  // FUND THE CASINO
+  function fund () public payable {
+    require(msg.value % minDivisor == 0);
+    addMember(msg.sender, msg.value);
   }
 
+  // REMOVE A MEMBER (OWNER/INVESTOR)
+  function houseRemoveMember(address payable houseMember) private {
+    (bool memberFlag, uint8 index) = indexFromAddressGet(houseMember);
+
+    if (memberFlag && houseActiveArray[index]) {
+      uint thisBalance = houseAccountsArray[index];
+      houseAccountsArray[index] = 0;
+      houseActiveArray[index] = false;
+
+      if (thisBalance > 0) {
+        houseMember.transfer(thisBalance);
+      }
+    }
+    minHouseAccountGet();
+  }
+
+  // WITHDRAW AND REMOVE MEMBER
+  function houseWithdraw (address payable houseMember) public {
+    require(msg.sender == houseMember || msg.sender == owner);
+    houseRemoveMember(houseMember);
+  }
+
+  // TRANSFER ALL FUNDS TO MEMBERS AND DESTROY THE CONTRACT
+  function kill () public {
+    require(msg.sender == owner);
+    for (uint i = 0; i < maxHouseMembers; i++) {
+      houseRemoveMember(houseMemberArray[i]);
+    }
+    selfdestruct(owner);
+  }
+
+  // UTILITY FUNCTIONS
+
+  // COUNT THE MAX NUMBER OF MATCHING SYMBOLS
   function countMaxMatch(uint[numReel] memory outcomeResult) public returns (uint) {
     uint8 max = 0;
     uint8 i = 0;
@@ -246,61 +265,20 @@ contract SlotMachine {
     return max;
   }
 
-  // RECALULATE ALL OWNERSHIP PERCENTAGES
-  function calculateHousePercentages() public {
-    uint gcd;
-
-    for (uint i = 0; i < maxHouseMembers; i++) {
-      if (houseAccounts[houseMemberArray[i]] == 0) {
-        housePercentages[houseMemberArray[i]].numerator = 0;
+  // GET THE INDEX OF A HOUSE MEMBER FROM THE ADDRESS IF IT EXISTS
+  function indexFromAddressGet(address payable possibleMemberAddress) public view returns (bool, uint8) {
+    for (uint8 i = 0; i < maxHouseMembers; i++) {
+      if (houseMemberArray[i] == possibleMemberAddress) {
+        return (true, i);
       }
-      gcd = gcdCalculate(houseAccounts[houseMemberArray[i]], address(this).balance);
-
-      housePercentages[houseMemberArray[i]].numerator = houseAccounts[houseMemberArray[i]]/gcd;
-      housePercentages[houseMemberArray[i]].denominator = address(this).balance/gcd;
     }
+    return (false, 0);
   }
 
   //  ALLOW OWNER TO SET AMOUNT WHICH MUST EVENLY DIVIDE ALL FUNDS
-  function setMinFundDivisor(uint amount) public {
+  function setminDivisor(uint amount) public {
     require(msg.sender == owner);
-    minFundDivisor = amount;
-  }
-
-  // CHECK THAT INITIAL FUND IS MULTIPLE OF minFundDivisor
-  function multipleOf(uint amount) public view returns (bool) {
-    return amount % minFundDivisor == 0;
-  }
-
-  // FUND THE CASINO
-  function fund () public payable {
-    require(multipleOf(msg.value));
-    addMember(msg.sender, msg.value);
-    calculateHousePercentages();
-  }
-
-  // REMOVE A MEMBER (OWNER/INVESTOR)
-  function houseRemoveMember(address payable houseMember) private {
-    if (houseAccounts[houseMember] > 0) {
-      houseMember.transfer(houseAccounts[houseMember]);
-      houseAccounts[houseMember] = 0;
-    }
-  }
-
-  // WITHDRAW AND REMOVE MEMBER
-  function houseWithdraw (address payable houseMember) public {
-    require(msg.sender == houseMember || msg.sender == owner);
-    houseRemoveMember(houseMember);
-    calculateHousePercentages();
-  }
-
-  // TRANSFER ALL FUNDS TO MEMBERS AND DESTROY THE CONTRACT
-  function kill () public {
-    require(msg.sender == owner);
-    for (uint i = 0; i < maxHouseMembers; i++) {
-      houseRemoveMember(houseMemberArray[i]);
-    }
-    selfdestruct(owner);
+    minDivisor = amount;
   }
 
   // GETTERS FOR DEBUGGING
@@ -310,5 +288,19 @@ contract SlotMachine {
 
   function getBalance () view public returns (uint) {
     return address(this).balance;
+  }
+
+  function minInvestment () view public returns (uint) {
+    return houseAccountMin + ((houseAccountMin * minPercentageIncrease)/100);
+  }
+
+  function houseAccountGet (address payable thisAddress) view public returns (uint) {
+    (bool memberFlag, uint index) = indexFromAddressGet(thisAddress);
+    if (memberFlag) {
+      return houseAccountsArray[index];
+    }
+    else {
+      return 0;
+    }
   }
 }
