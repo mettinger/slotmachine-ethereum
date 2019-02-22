@@ -124,14 +124,26 @@ contract SlotMachine {
 
         // INCOMING BET
         if (bet) {
-          houseAccountsArray[i] += (amount * houseAccountsArray[i])/balanceHouse;
+          houseAccountsArray[i] += (amount * houseAccountsArray[i]) / balanceHouse;
         }
         // OUTGOING PAYOUT
         else {
-          houseAccountsArray[i] -= (amount * houseAccountsArray[i])/balanceHouse;
+          houseAccountsArray[i] -= (amount * houseAccountsArray[i]) / balanceHouse;
         }
       }
     }
+  }
+
+  // REBALANCE AND FIX ACCUMULATED ROUNDING ERRORS
+  function rebalance() public {
+    uint accountsTotal = 0;
+    for (uint8 i=0; i < maxHouseMembers; i++) {
+      if (houseActiveArray[i]) {
+        accountsTotal += houseAccountsArray[i];
+      }
+    }
+    uint remainder = address(this).balance - accountsTotal;
+    distributeAmount(true, remainder);
   }
 
   // PLACE A WAGER
@@ -291,7 +303,7 @@ contract SlotMachine {
   }
 
   function minInvestment () view public returns (uint) {
-    return houseAccountMin + ((houseAccountMin * minPercentageIncrease)/100);
+    return houseAccountMin + ((houseAccountMin * minPercentageIncrease) / 100);
   }
 
   function houseAccountGet (address payable thisAddress) view public returns (uint) {
