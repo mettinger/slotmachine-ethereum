@@ -6,7 +6,7 @@ Both repositories are intended to be easily customizable, making it easy to desi
 
 Tips and instructions for creating your custom slot machine contract:
 
-1.  Modify THE section at the beginning of the contract marked off as "START MACHINE DEFINITION" AND "END MACHINE DEFINITION".  The essential elements to define are:
+1.  Modify the section at the beginning of the contract marked off as "START MACHINE DEFINITION" AND "END MACHINE DEFINITION".  The essential elements to define are:
   * The number of reels on your machine: numReel.
   * The maximum payout multiplier: maxMultiplier.
   * The makeMachine function which defines the reels, symbols and probabilities.
