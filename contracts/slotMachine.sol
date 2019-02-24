@@ -32,12 +32,12 @@ contract SlotMachine {
   function paytable(uint[numReel] memory outcome, uint betAmount) internal returns (uint) {
     uint maxMatch = countMaxMatch(outcome);
     if (maxMatch == 4) {
-      return betAmount * 27;
+      return betAmount * 81;
     }
     if (maxMatch == 5) {
       return betAmount * 3252;
     }
-}
+  }
 
 // END MACHINE DEFINITION
 // ******************************************
@@ -167,15 +167,18 @@ contract SlotMachine {
 
       alreadyPlayed[id] = true;
       award = paytable(thisOutcome, bet.amount);
+
       if (award > 0) {
         if (award > address(this).balance) {
           award = address(this).balance;
         }
         distributeAmount(false, award);
+        emit Awarded(id, award);
         msg.sender.transfer(award);
       }
-
-      emit Awarded(id, award);
+      else {
+        emit Awarded(id, award);
+      }
   }
 
   function minHouseAccountGet() public {
@@ -236,7 +239,7 @@ contract SlotMachine {
       houseActiveArray[index] = false;
 
       if (thisBalance > 0) {
-        houseMember.transfer(thisBalance);
+        houseMember.send(thisBalance);
       }
     }
     minHouseAccountGet();
