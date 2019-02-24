@@ -4,7 +4,9 @@ This repository contains smart contract code for an Ethereum slot machine. The f
 
 Both repositories are intended to be easily customizable, making it easy to design and deploy new, creative slot machines on Ethereum.
 
-Backend instructions for creating your custom slot machine:
+Tips and instructions for creating your custom slot machine contract:
 
-1.  Step 1 
-2.  Step 2
+1.  Modify THE section at the beginning of the contract marked off as "START MACHINE DEFINITION" AND "END MACHINE DEFINITION".  The essential elements to define are:
+  a.  The number of reels on your machine: numReel
+  b.  The maximum payout multiplier: maxMultiplier
+2.  The jupyter notebook python/slotMachine.ipynb contains tools and utilities to assist in the process of creating a custom slot machine.

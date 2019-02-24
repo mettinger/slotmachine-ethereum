@@ -3,7 +3,7 @@ pragma solidity ^0.5.0;
 contract SlotMachine {
 
   // ******************************
-// DEFINE THE MACHINE
+// START MACHINE DEFINITION
 
   // MACHINE SPECIFIC CONSTANTS AND VARIABLES
   uint8 constant numReel = 5;
