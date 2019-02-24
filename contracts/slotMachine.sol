@@ -55,6 +55,8 @@ contract SlotMachine {
     uint block;
   }
 
+  enum State { Active, Suspended }
+
   // PARAMETERS
   uint8 constant public maxHouseMembers = 20; // max number of investors/owners
   uint constant public minPercentageIncrease = 20; // min overage for kicking someone on funding
@@ -81,6 +83,8 @@ contract SlotMachine {
   uint public houseAccountMin = 0;
   uint8 public houseAccountMinIndex = 0;
 
+  State public state;
+
   // DEFINE EVENTS
   event BetPlaced(address user, uint amount, uint block, uint counter);
   event Awarded(uint id, uint award);
@@ -92,7 +96,7 @@ contract SlotMachine {
   }
 
   // DETERMINE THE OUTCOME SYMBOL FOR EACH REEL
-  function sample(uint id) public {
+  function sample(uint id) internal {
     uint thisRandom;
     uint thisHash;
     uint runningProbSum;
@@ -148,6 +152,7 @@ contract SlotMachine {
 
   // PLACE A WAGER
   function wager () payable public {
+    require( state == State.Active);
     require(msg.value % minDivisor == 0);
     bets[counter] = Bet(msg.sender, msg.value, block.number + blockDelay);
     distributeAmount(true, msg.value);
@@ -157,6 +162,7 @@ contract SlotMachine {
 
   // PLAY THE GAME
   function play (uint id) public {
+      require( state == State.Active);
       Bet storage bet = bets[id];
       require(msg.sender == bet.user);
       require(block.number >= bet.block);
@@ -201,7 +207,7 @@ contract SlotMachine {
   }
 
   // TRY TO ADD A NEW MEMBER (OWNER/INVESTOR)
-  function addMember(address payable addressToAdd, uint initialFund) private {
+  function addMember(address payable addressToAdd, uint initialFund) internal {
 
     // CHECK IF ALREADY A MEMBER
     (bool isAlreadyMember, uint8 index) = indexFromAddressGet(addressToAdd);
@@ -225,12 +231,13 @@ contract SlotMachine {
 
   // FUND THE CASINO
   function fund () public payable {
+    require( state == State.Active);
     require(msg.value % minDivisor == 0);
     addMember(msg.sender, msg.value);
   }
 
   // REMOVE A MEMBER (OWNER/INVESTOR)
-  function houseRemoveMember(address payable houseMember) private {
+  function houseRemoveMember(address payable houseMember) internal {
     (bool memberFlag, uint8 index) = indexFromAddressGet(houseMember);
 
     if (memberFlag && houseActiveArray[index]) {
@@ -258,6 +265,16 @@ contract SlotMachine {
       houseRemoveMember(houseMemberArray[i]);
     }
     selfdestruct(owner);
+  }
+
+  function suspend () public {
+    require(msg.sender == owner);
+    state = State.Suspended;
+  }
+
+  function activate () public {
+    require(msg.sender == owner);
+    state = State.Active;
   }
 
   // UTILITY FUNCTIONS
